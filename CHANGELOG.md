@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.2 (2019-09-10)
+
+### Changed
+- Allow `publicPath` to be an empty string (supports targeting Node and using the top level project directory for the output) (#39)
+
+## 1.4.1 (2019-08-12)
+
+### Fixed
+- Manually join paths rather than using `url.resolve()` as that doesn't work with the (\*) wildcard character (#37, fixes #35)
+
 ## 1.4.0 (2019-03-13)
 
 ### Changed
