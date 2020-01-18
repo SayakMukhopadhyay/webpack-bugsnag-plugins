@@ -3,6 +3,7 @@
 const upload = require('bugsnag-sourcemaps').upload
 const resolve = require('url').resolve
 const parallel = require('run-parallel-limit')
+const extname = require('path').extname
 const fs = require('fs')
 
 const LOG_PREFIX = `[BugsnagSourceMapUploaderPlugin]`
@@ -18,6 +19,7 @@ class BugsnagSourceMapUploaderPlugin {
     this.appVersion = options.appVersion
     this.overwrite = options.overwrite
     this.endpoint = options.endpoint
+    this.ignoredBundleExtensions = options.ignoredBundleExtensions || [ '.css' ]
     this.deleteSourceMaps = options.deleteSourceMaps ? options.deleteSourceMaps : false
     this.validate()
   }
@@ -30,8 +32,10 @@ class BugsnagSourceMapUploaderPlugin {
 
   apply (compiler) {
     const plugin = (compilation, cb) => {
+      const compiler = compilation.compiler
       const stats = compilation.getStats().toJson()
       const publicPath = this.publicPath || stats.publicPath
+      const outputPath = compilation.getPath(compiler.outputPath)
 
       if (!publicPath) {
         console.warn(`${LOG_PREFIX} ${PUBLIC_PATH_ERR}`)
@@ -44,7 +48,7 @@ class BugsnagSourceMapUploaderPlugin {
 
         return maps.map(map => {
           // for each *.map file, find a corresponding source file in the chunk
-          const source = chunk.files.find(file => file === map.replace('.map', ''))
+          const source = chunk.files.find(file => map.replace('.map', '').endsWith(file))
 
           if (!source) {
             console.warn(`${LOG_PREFIX} no corresponding source found for "${map}" in chunk "${chunk.id}"`)
@@ -61,9 +65,17 @@ class BugsnagSourceMapUploaderPlugin {
             return null
           }
 
+          const outputChunkLocation = stripQuery(compiler.outputFileSystem.join(outputPath, source))
+          const outputSourceMapLocation = stripQuery(compiler.outputFileSystem.join(outputPath, map))
+
+          // only include this file if its extension is not in the ignore list
+          if (this.ignoredBundleExtensions.indexOf(extname(outputChunkLocation)) !== -1) {
+            return null
+          }
+
           return {
-            source: compilation.assets[source].existsAt,
-            map: compilation.assets[map].existsAt,
+            source: outputChunkLocation,
+            map: outputSourceMapLocation,
             url: resolve(
               // ensure publicPath has a trailing slash
               publicPath.replace(/[^/]$/, '$&/'),
@@ -120,3 +132,10 @@ class BugsnagSourceMapUploaderPlugin {
 }
 
 module.exports = BugsnagSourceMapUploaderPlugin
+
+// removes a querystring from a file path
+const stripQuery = file => {
+  const queryStringIdx = file.indexOf('?')
+  if (queryStringIdx < 0) return file
+  return file.substr(0, queryStringIdx)
+}
